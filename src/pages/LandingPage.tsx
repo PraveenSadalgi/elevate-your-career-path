@@ -1,4 +1,3 @@
-
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
@@ -36,7 +35,7 @@ const LandingPage = () => {
                 <Button asChild size="lg" className="bg-white text-brand-600 hover:bg-gray-100 hover:text-brand-700">
                   <Link to="/signup">Get Started</Link>
                 </Button>
-                <Button asChild size="lg" variant="outline" className="text-white border-white hover:bg-white/10">
+                <Button asChild size="lg" variant="outline" className="text-black border-white hover:bg-white/10 hover:text-white">
                   <Link to="/courses">Explore Courses</Link>
                 </Button>
               </div>

@@ -1,237 +1,272 @@
 
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { useAuth } from "@/context/AuthContext";
 import { getCourseById } from "@/data/courses";
 import { Course, Video } from "@/types";
 import { Clock, Calendar, Award, PlayCircle } from "lucide-react";
-import { toast } from "@/components/ui/sonner";
+import { toast } from "@/components/ui/use-toast";
+import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 const CourseDetailPage = () => {
   const { courseId } = useParams<{ courseId: string }>();
-  const navigate = useNavigate();
+  const [course, setCourse] = useState<Course | null>(null);
+  const [activeVideo, setActiveVideo] = useState<Video | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const { user, updateUserPoints } = useAuth();
-  const [course, setCourse] = useState<Course | undefined>(undefined);
-  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
-  const [watchedVideos, setWatchedVideos] = useState<string[]>([]);
 
   useEffect(() => {
     if (courseId) {
-      const courseData = getCourseById(courseId);
-      if (courseData) {
-        setCourse(courseData);
-        if (courseData.videos.length > 0) {
-          setSelectedVideo(courseData.videos[0]);
-        }
-      } else {
-        navigate("/courses");
+      const fetchedCourse = getCourseById(courseId);
+      setCourse(fetchedCourse);
+      if (fetchedCourse && fetchedCourse.videos.length > 0) {
+        setActiveVideo(fetchedCourse.videos[0]);
       }
+      setIsLoading(false);
     }
-  }, [courseId, navigate]);
+  }, [courseId]);
 
   const handleVideoSelect = (video: Video) => {
-    setSelectedVideo(video);
-    if (!watchedVideos.includes(video.id)) {
-      setWatchedVideos([...watchedVideos, video.id]);
-    }
+    setActiveVideo(video);
   };
 
-  const handleCompleteVideo = () => {
-    if (selectedVideo && !watchedVideos.includes(selectedVideo.id)) {
-      const updatedWatchedVideos = [...watchedVideos, selectedVideo.id];
-      setWatchedVideos(updatedWatchedVideos);
-      
-      // Check if all videos have been watched
-      if (course && updatedWatchedVideos.length === course.videos.length) {
-        updateUserPoints(course.pointsReward);
-        toast({
-          title: "Course Completed!",
-          description: `You've earned ${course.pointsReward} points for completing this course.`
+  const handleCompleteCourse = async () => {
+    if (!courseId || !user) return;
+
+    try {
+      // Record course completion in Supabase
+      const { error } = await supabase
+        .from('completed_courses')
+        .insert({
+          user_id: user.id,
+          course_id: courseId
         });
+
+      if (error) {
+        console.error("Error marking course as complete:", error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to mark course as complete."
+        });
+        return;
       }
+
+      // Update user points
+      if (course?.pointsReward) {
+        await updateUserPoints(course.pointsReward);
+      }
+
+      toast({
+        title: "Course Completed!",
+        description: `Congratulations! You've earned ${course?.pointsReward || 0} points.`
+      });
+
+    } catch (error) {
+      console.error("Error completing course:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An error occurred while completing the course."
+      });
     }
   };
 
-  const isVideoWatched = (videoId: string) => watchedVideos.includes(videoId);
-
-  if (!course) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (isLoading) {
+    return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
   }
 
-  const progress = course.videos.length > 0 
-    ? Math.round((watchedVideos.length / course.videos.length) * 100) 
-    : 0;
+  if (!course) {
+    return <div className="flex justify-center items-center min-h-screen">Course not found</div>;
+  }
+
+  const watchedCount = course.videos.filter(video => video.watched).length;
+  const progress = (watchedCount / course.videos.length) * 100;
 
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
-      
-      <main className="flex-grow py-8 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Course Header */}
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-8">
-            <div className="h-64 bg-gray-200 relative">
-              <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent flex items-end">
-                <div className="p-6 w-full">
-                  <Badge className="mb-2">{course.category}</Badge>
-                  <h1 className="text-white text-3xl font-bold">{course.title}</h1>
-                  
-                  <div className="flex flex-wrap gap-4 mt-3 text-white">
-                    <div className="flex items-center">
-                      <Clock className="h-4 w-4 mr-1" />
-                      <span>{course.duration}</span>
-                    </div>
-                    <div className="flex items-center">
-                      <Calendar className="h-4 w-4 mr-1" />
-                      <span>{course.level}</span>
-                    </div>
-                    <div className="flex items-center">
-                      <Award className="h-4 w-4 mr-1" />
-                      <span>{course.pointsReward} points</span>
-                    </div>
-                  </div>
+      <div className="flex-grow container mx-auto px-4 py-8">
+        <Breadcrumb className="mb-6">
+          <BreadcrumbItem>
+            <BreadcrumbLink as={Link} to="/courses">Courses</BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbLink>{course.title}</BreadcrumbLink>
+          </BreadcrumbItem>
+        </Breadcrumb>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Course Content - Left Side */}
+          <div className="lg:col-span-2">
+            <h1 className="text-3xl font-bold mb-4">{course.title}</h1>
+            
+            <div className="bg-gray-100 rounded-lg p-6 mb-6">
+              <div className="flex flex-wrap gap-4 mb-4 text-sm text-gray-600">
+                <div className="flex items-center">
+                  <Clock size={16} className="mr-1" />
+                  <span>{course.duration}</span>
+                </div>
+                <div className="flex items-center">
+                  <Award size={16} className="mr-1" />
+                  <span>{course.level}</span>
+                </div>
+                <div className="flex items-center">
+                  <Calendar size={16} className="mr-1" />
+                  <span>Updated 2 months ago</span>
                 </div>
               </div>
+              
+              <div className="mb-4">
+                <div className="flex justify-between text-sm mb-1">
+                  <span>Progress</span>
+                  <span>{Math.round(progress)}%</span>
+                </div>
+                <Progress value={progress} className="h-2" />
+              </div>
+              
+              <Button 
+                onClick={handleCompleteCourse} 
+                disabled={progress < 100}
+                className="w-full"
+              >
+                {progress < 100 ? "Complete All Videos to Finish Course" : "Mark Course as Completed"}
+              </Button>
             </div>
-          </div>
-          
-          {/* Content Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Main Content - Video Player */}
-            <div className="lg:col-span-2">
-              <Tabs defaultValue="videos" className="mb-8">
-                <TabsList className="mb-4">
-                  <TabsTrigger value="videos">Videos</TabsTrigger>
-                  <TabsTrigger value="overview">Overview</TabsTrigger>
+            
+            {activeVideo && (
+              <div className="mb-6">
+                <div className="bg-gray-900 aspect-video rounded-lg flex items-center justify-center mb-4">
+                  <div className="relative w-full h-0 pb-[56.25%]">
+                    <iframe 
+                      className="absolute top-0 left-0 w-full h-full rounded-lg"
+                      src={`https://www.youtube.com/embed/${activeVideo.youtubeId}`}
+                      title={activeVideo.title}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    ></iframe>
+                  </div>
+                </div>
+                <h2 className="text-xl font-bold mb-2">{activeVideo.title}</h2>
+                <p className="text-gray-600">{activeVideo.description}</p>
+              </div>
+            )}
+            
+            <div>
+              <Tabs defaultValue="about">
+                <TabsList className="w-full mb-4">
+                  <TabsTrigger value="about" className="flex-1">About</TabsTrigger>
+                  <TabsTrigger value="resources" className="flex-1">Resources</TabsTrigger>
+                  <TabsTrigger value="discussion" className="flex-1">Discussion</TabsTrigger>
                 </TabsList>
                 
-                <TabsContent value="videos" className="space-y-6">
-                  {selectedVideo ? (
-                    <>
-                      <div className="youtube-container">
-                        <iframe
-                          src={`https://www.youtube.com/embed/${selectedVideo.youtubeId}`}
-                          title={selectedVideo.title}
-                          frameBorder="0"
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                          allowFullScreen
-                        ></iframe>
-                      </div>
-                      
-                      <div>
-                        <h2 className="text-2xl font-bold">{selectedVideo.title}</h2>
-                        <p className="mt-2 text-gray-600">{selectedVideo.description}</p>
-                        <div className="mt-4 flex justify-between items-center">
-                          <div className="flex items-center text-sm text-gray-500">
-                            <Clock className="h-4 w-4 mr-1" />
-                            <span>{selectedVideo.duration}</span>
-                          </div>
-                          <Button 
-                            onClick={handleCompleteVideo}
-                            disabled={isVideoWatched(selectedVideo.id)}
-                            variant={isVideoWatched(selectedVideo.id) ? "outline" : "default"}
-                          >
-                            {isVideoWatched(selectedVideo.id) ? "Completed" : "Mark as Completed"}
-                          </Button>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <p>No videos available for this course.</p>
-                  )}
+                <TabsContent value="about" className="p-4">
+                  <h3 className="text-lg font-semibold mb-3">About This Course</h3>
+                  <p className="mb-4">{course.description}</p>
+                  
+                  <h3 className="text-lg font-semibold mb-3">What You'll Learn</h3>
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li>Master the fundamentals of {course.title}</li>
+                    <li>Apply concepts to real-world problems</li>
+                    <li>Build confidence in technical interviews</li>
+                    <li>Develop problem-solving skills</li>
+                  </ul>
                 </TabsContent>
                 
-                <TabsContent value="overview">
-                  <Card>
-                    <CardContent className="pt-6">
-                      <h2 className="text-xl font-semibold mb-4">About this Course</h2>
-                      <p className="text-gray-700">{course.description}</p>
-                      
-                      <div className="mt-6">
-                        <h3 className="text-lg font-medium mb-2">What You'll Learn</h3>
-                        <ul className="list-disc pl-5 space-y-1">
-                          <li>Comprehensive understanding of {course.category} concepts</li>
-                          <li>Practical skills applicable in real-world scenarios</li>
-                          <li>Tips and tricks for technical interviews</li>
-                          <li>Industry best practices and standards</li>
-                        </ul>
-                      </div>
-                      
-                      <div className="mt-6">
-                        <h3 className="text-lg font-medium mb-2">Prerequisites</h3>
-                        <p className="text-gray-700">
-                          {course.level === "Beginner" ? "No prior knowledge required" : 
-                           course.level === "Intermediate" ? "Basic understanding of the subject" : 
-                           "Strong foundation in the fundamentals"}
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
+                <TabsContent value="resources" className="p-4">
+                  <h3 className="text-lg font-semibold mb-3">Course Resources</h3>
+                  <ul className="space-y-2">
+                    <li className="flex items-center">
+                      <a href="#" className="text-brand-600 hover:text-brand-800 flex items-center">
+                        <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                        </svg>
+                        Course Slides PDF
+                      </a>
+                    </li>
+                    <li className="flex items-center">
+                      <a href="#" className="text-brand-600 hover:text-brand-800 flex items-center">
+                        <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                        </svg>
+                        Practice Exercises
+                      </a>
+                    </li>
+                    <li className="flex items-center">
+                      <a href="#" className="text-brand-600 hover:text-brand-800 flex items-center">
+                        <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                        Code Samples GitHub Repo
+                      </a>
+                    </li>
+                  </ul>
+                </TabsContent>
+                
+                <TabsContent value="discussion" className="p-4">
+                  <div className="bg-gray-50 p-4 rounded-lg text-center">
+                    <h3 className="text-lg font-semibold mb-2">Join the Discussion</h3>
+                    <p className="mb-4 text-gray-600">Share your thoughts, ask questions, and connect with other learners.</p>
+                    <Button variant="outline">Log in to Comment</Button>
+                  </div>
                 </TabsContent>
               </Tabs>
             </div>
-            
-            {/* Sidebar - Course Progress & Videos List */}
-            <div>
-              <Card className="mb-6">
-                <CardContent className="pt-6">
-                  <h3 className="text-lg font-medium mb-2">Your Progress</h3>
-                  <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-brand-600 rounded-full" 
-                      style={{ width: `${progress}%` }}
-                    ></div>
-                  </div>
-                  <p className="text-sm text-gray-600 mt-2">
-                    {watchedVideos.length} of {course.videos.length} videos completed ({progress}%)
-                  </p>
-                </CardContent>
-              </Card>
+          </div>
+          
+          {/* Course Sidebar - Right Side */}
+          <div>
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden sticky top-20">
+              <div className="p-4 border-b border-gray-200">
+                <h2 className="font-bold text-xl">Course Content</h2>
+                <p className="text-sm text-gray-600">{course.videos.length} videos • {course.duration}</p>
+              </div>
               
-              <Card>
-                <CardContent className="pt-6">
-                  <h3 className="text-lg font-medium mb-4">Course Content</h3>
-                  <div className="space-y-3">
-                    {course.videos.map((video) => (
-                      <button
-                        key={video.id}
-                        className={`w-full flex items-start p-3 rounded-lg text-left ${
-                          selectedVideo?.id === video.id 
-                            ? 'bg-brand-50 border border-brand-200' 
-                            : 'hover:bg-gray-50'
-                        }`}
-                        onClick={() => handleVideoSelect(video)}
-                      >
-                        <div className="flex-shrink-0 mt-0.5">
-                          <PlayCircle className={`h-5 w-5 ${
-                            isVideoWatched(video.id) ? 'text-green-500' : 'text-gray-400'
-                          }`} />
+              <div className="divide-y divide-gray-200 max-h-[60vh] overflow-y-auto">
+                {course.videos.map((video, index) => (
+                  <button
+                    key={video.id}
+                    onClick={() => handleVideoSelect(video)}
+                    className={`w-full text-left p-4 hover:bg-gray-50 flex items-start transition-colors ${activeVideo?.id === video.id ? 'bg-gray-50' : ''}`}
+                  >
+                    <div className="mr-3 mt-1 flex-shrink-0">
+                      {video.watched ? (
+                        <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
                         </div>
-                        <div className="ml-3">
-                          <p className={`font-medium ${
-                            selectedVideo?.id === video.id ? 'text-brand-700' : 'text-gray-900'
-                          }`}>
-                            {video.title}
-                          </p>
-                          <p className="text-sm text-gray-500 mt-1">{video.duration}</p>
+                      ) : (
+                        <div className="w-5 h-5 flex items-center justify-center">
+                          <PlayCircle size={20} className="text-gray-400" />
                         </div>
-                      </button>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+                      )}
+                    </div>
+                    <div>
+                      <p className={`font-medium ${activeVideo?.id === video.id ? 'text-brand-600' : ''}`}>
+                        {index + 1}. {video.title}
+                      </p>
+                      <p className="text-xs text-gray-500">{video.duration}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
-      </main>
-      
+      </div>
       <Footer />
     </div>
   );
