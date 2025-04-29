@@ -11,6 +11,7 @@ import { useAuth } from "@/context/AuthContext";
 import { getCourseById } from "@/data/courses";
 import { Course, Video } from "@/types";
 import { Clock, Calendar, Award, PlayCircle } from "lucide-react";
+import { toast } from "@/components/ui/sonner";
 
 const CourseDetailPage = () => {
   const { courseId } = useParams<{ courseId: string }>();
