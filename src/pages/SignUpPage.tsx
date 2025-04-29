@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,8 +21,7 @@ const signupSchema = z.object({
 type SignupFormData = z.infer<typeof signupSchema>;
 
 const SignUpPage = () => {
-  const navigate = useNavigate();
-  const { signup } = useAuth();
+  const { signup, isLoading } = useAuth();
 
   const [formData, setFormData] = useState<SignupFormData>({
     name: "",
@@ -32,7 +31,7 @@ const SignUpPage = () => {
   });
 
   const [errors, setErrors] = useState<Partial<SignupFormData>>({});
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -91,16 +90,19 @@ const SignUpPage = () => {
       return;
     }
 
-    setIsLoading(true);
+    setIsSubmitting(true);
     try {
       await signup(formData.name, formData.email, formData.password, formData.education);
-      navigate("/dashboard");
+      // Redirect handled in AuthContext
     } catch (error) {
       console.error("Signup error:", error);
-    } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
+
+  // Use combined loading state
+  const submitButtonDisabled = isSubmitting || isLoading;
+  const submitButtonText = isSubmitting || isLoading ? "Creating account..." : "Sign up";
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -132,6 +134,7 @@ const SignUpPage = () => {
                   onChange={handleChange}
                   placeholder="Enter your full name"
                   className={errors.name ? "border-red-500" : ""}
+                  disabled={submitButtonDisabled}
                 />
                 {errors.name && <p className="text-sm text-red-500 mt-1">{errors.name}</p>}
               </div>
@@ -147,6 +150,7 @@ const SignUpPage = () => {
                   onChange={handleChange}
                   placeholder="Enter your email"
                   className={errors.email ? "border-red-500" : ""}
+                  disabled={submitButtonDisabled}
                 />
                 {errors.email && <p className="text-sm text-red-500 mt-1">{errors.email}</p>}
               </div>
@@ -162,13 +166,14 @@ const SignUpPage = () => {
                   onChange={handleChange}
                   placeholder="Create a password (min 8 characters)"
                   className={errors.password ? "border-red-500" : ""}
+                  disabled={submitButtonDisabled}
                 />
                 {errors.password && <p className="text-sm text-red-500 mt-1">{errors.password}</p>}
               </div>
 
               <div>
                 <Label htmlFor="education">Educational Qualification</Label>
-                <Select onValueChange={handleEducationChange} value={formData.education}>
+                <Select onValueChange={handleEducationChange} value={formData.education} disabled={submitButtonDisabled}>
                   <SelectTrigger className={errors.education ? "border-red-500" : ""}>
                     <SelectValue placeholder="Select your highest qualification" />
                   </SelectTrigger>
@@ -185,8 +190,8 @@ const SignUpPage = () => {
               </div>
             </div>
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Creating account..." : "Sign up"}
+            <Button type="submit" className="w-full" disabled={submitButtonDisabled}>
+              {submitButtonText}
             </Button>
           </form>
 

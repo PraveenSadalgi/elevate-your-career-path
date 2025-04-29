@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,8 +18,7 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 const LoginPage = () => {
-  const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isLoading: authLoading } = useAuth();
 
   const [formData, setFormData] = useState<LoginFormData>({
     email: "",
@@ -27,7 +26,7 @@ const LoginPage = () => {
   });
 
   const [errors, setErrors] = useState<Partial<LoginFormData>>({});
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -71,16 +70,19 @@ const LoginPage = () => {
       return;
     }
 
-    setIsLoading(true);
+    setIsSubmitting(true);
     try {
       await login(formData.email, formData.password);
-      navigate("/dashboard");
+      // Redirect handled in AuthContext
     } catch (error) {
       console.error("Login error:", error);
-    } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
+
+  // Use combined loading state
+  const submitButtonDisabled = isSubmitting || authLoading;
+  const submitButtonText = isSubmitting || authLoading ? "Signing in..." : "Sign in";
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -112,6 +114,7 @@ const LoginPage = () => {
                   onChange={handleChange}
                   placeholder="Enter your email"
                   className={errors.email ? "border-red-500" : ""}
+                  disabled={submitButtonDisabled}
                 />
                 {errors.email && <p className="text-sm text-red-500 mt-1">{errors.email}</p>}
               </div>
@@ -132,13 +135,14 @@ const LoginPage = () => {
                   onChange={handleChange}
                   placeholder="Enter your password"
                   className={errors.password ? "border-red-500" : ""}
+                  disabled={submitButtonDisabled}
                 />
                 {errors.password && <p className="text-sm text-red-500 mt-1">{errors.password}</p>}
               </div>
             </div>
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Signing in..." : "Sign in"}
+            <Button type="submit" className="w-full" disabled={submitButtonDisabled}>
+              {submitButtonText}
             </Button>
           </form>
         </div>

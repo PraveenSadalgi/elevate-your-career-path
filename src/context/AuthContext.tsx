@@ -1,8 +1,9 @@
 
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { toast } from '@/components/ui/use-toast';
+import { toast } from '@/components/ui/sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/integrations/supabase/types';
+import { useNavigate } from 'react-router-dom';
 
 type ProfilesRow = Database['public']['Tables']['profiles']['Row'];
 
@@ -34,9 +35,16 @@ export const useAuth = () => {
   return context;
 };
 
+// Custom hook for redirects
+const useAuthRedirect = () => {
+  const navigate = useNavigate();
+  return { navigate };
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const { navigate } = useAuthRedirect();
   
   // Check for existing session on mount and setup auth listener
   useEffect(() => {
@@ -122,7 +130,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         description: "Welcome back to ElevateCareer!"
       });
       
+      // Redirect to dashboard after successful login
+      navigate('/dashboard');
+      
     } catch (error) {
+      console.error("Login error:", error);
       throw error;
     } finally {
       setIsLoading(false);
@@ -154,13 +166,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw error;
       }
       
-      // User profile will be created by the database trigger
+      // Wait for profile to be created
+      if (data.user) {
+        // Check if we need to create a profile manually
+        // This is a safety check in case the database trigger didn't work
+        setTimeout(async () => {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', data.user?.id)
+            .single();
+            
+          if (!profileData) {
+            // Create profile manually if it doesn't exist
+            await supabase.from('profiles').insert({
+              id: data.user.id,
+              name,
+              email,
+              education,
+              points: 0
+            });
+          }
+          
+          // Fetch the user profile
+          await fetchUserProfile(data.user.id);
+          
+          // Redirect to dashboard after successful signup
+          navigate('/dashboard');
+        }, 1000); // Give the trigger a second to run
+      }
+      
       toast({
         title: "Account created",
         description: "Welcome to ElevateCareer!"
       });
       
     } catch (error) {
+      console.error("Signup error:", error);
       throw error;
     } finally {
       setIsLoading(false);
@@ -176,6 +218,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         title: "Logged out",
         description: "You have been logged out successfully"
       });
+      // Redirect to home page after logout
+      navigate('/');
     } catch (error) {
       console.error("Error during logout:", error);
       toast({
